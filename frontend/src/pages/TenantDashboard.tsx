@@ -34,7 +34,6 @@ type TenantRequest = {
   accessInstructions?: string | null;
   lastUpdatedByRole: UpdatedByRole;
 
-  // NEW: timeline timestamps per step (ISO strings or null)
   inQueueAt: string | null;
   viewedAt: string | null;
   maintenanceRequestedAt: string | null;
@@ -99,7 +98,6 @@ const TenantDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
-  // "active" (non-completed) vs "completed" list
   const [requestView, setRequestView] = useState<"active" | "completed">(
     "active"
   );
@@ -114,25 +112,83 @@ const TenantDashboard: React.FC = () => {
     accessInstructions: "",
   });
 
+  const getStatusIndex = (status: RequestStatus) =>
+    statusPipeline.indexOf(status);
+
+  const formatUpdatedBy = (role: UpdatedByRole) => {
+    if (role === "tenant") return "You";
+    if (role === "manager") return "Maintenance";
+    return "System";
+  };
+
+  const formatDateTime = (value: string) =>
+    new Date(value).toLocaleString(undefined, {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+
+  const formatTimeOnly = (value: string) =>
+    new Date(value).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+  const formatDuration = (start: string, end: string): string | null => {
+    const s = new Date(start).getTime();
+    const e = new Date(end).getTime();
+    if (isNaN(s) || isNaN(e) || e <= s) return null;
+    const diffMs = e - s;
+    const totalMinutes = Math.round(diffMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes - hours * 60;
+
+    if (hours === 0) return `${minutes} min`;
+    if (minutes === 0) return `${hours} h`;
+    return `${hours} h ${minutes} min`;
+  };
+
+  const activeRequests = requests.filter((r) => r.status !== "completed");
+  const completedRequests = requests.filter((r) => r.status === "completed");
+  const currentList =
+    requestView === "active" ? activeRequests : completedRequests;
+
+  // Load + auto-refresh so tenant sees time updates when maintenance changes status
   useEffect(() => {
     if (!token) {
       setLoading(false);
       return;
     }
 
-    (async () => {
+    let cancelled = false;
+
+    const fetchRequests = async () => {
       try {
         const res = await api.get<TenantRequest[]>("/requests/mine", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setRequests(res.data);
+        if (!cancelled) {
+          setRequests(res.data);
+        }
       } catch (err) {
         console.error(err);
-        setError("Failed to load your requests.");
+        if (!cancelled) {
+          setError("Failed to load your requests.");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    })();
+    };
+
+    fetchRequests();
+    const intervalId = setInterval(fetchRequests, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, [token]);
 
   const handleChange = (
@@ -211,46 +267,6 @@ const TenantDashboard: React.FC = () => {
     }
   };
 
-  const getStatusIndex = (status: RequestStatus) =>
-    statusPipeline.indexOf(status);
-
-  const formatUpdatedBy = (role: UpdatedByRole) => {
-    if (role === "tenant") return "You";
-    if (role === "manager") return "Maintenance";
-    return "System";
-  };
-
-  const formatDateTime = (value: string) =>
-    new Date(value).toLocaleString(undefined, {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
-
-  const formatTimeOnly = (value: string) =>
-    new Date(value).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-  const formatDuration = (start: string, end: string): string | null => {
-    const s = new Date(start).getTime();
-    const e = new Date(end).getTime();
-    if (isNaN(s) || isNaN(e) || e <= s) return null;
-    const diffMs = e - s;
-    const totalMinutes = Math.round(diffMs / 60000);
-    const hours = Math.floor((totalMinutes * 1.0) / 60);
-    const minutes = totalMinutes - hours * 60;
-
-    if (hours === 0) return `${minutes} min`;
-    if (minutes === 0) return `${hours} h`;
-    return `${hours} h ${minutes} min`;
-  };
-
-  const activeRequests = requests.filter((r) => r.status !== "completed");
-  const completedRequests = requests.filter((r) => r.status === "completed");
-  const currentList =
-    requestView === "active" ? activeRequests : completedRequests;
-
   return (
     <div className="app-shell">
       <header className="app-topbar">
@@ -280,7 +296,7 @@ const TenantDashboard: React.FC = () => {
 
       <main className="page-content">
         <div className="layout-two-column">
-          {/* Left side: maintenance request form */}
+          {/* LEFT: form */}
           <section className="card">
             <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>
               Submit a Maintenance Request
@@ -317,7 +333,6 @@ const TenantDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Priority + time window */}
               <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
                 <div style={{ flex: 1 }} className="field-group">
                   <label className="field-label">
@@ -420,13 +435,12 @@ const TenantDashboard: React.FC = () => {
             </form>
           </section>
 
-          {/* Right side: requests list with toggle + hover-expand + timeline */}
+          {/* RIGHT: timeline / cards */}
           <section>
             <h2 style={{ marginBottom: 8, fontSize: 18 }}>
               Track Your Requests
             </h2>
 
-            {/* Toggle buttons: Active vs Previous */}
             <div
               style={{
                 display: "flex",
@@ -461,13 +475,6 @@ const TenantDashboard: React.FC = () => {
               </button>
             </div>
 
-            <p
-              className="text-muted"
-              style={{ marginTop: 0, marginBottom: 10 }}
-            >
-              Hover a card to see when each step happened and how long it took.
-            </p>
-
             {loading ? (
               <p className="text-muted">Loading your requests...</p>
             ) : currentList.length === 0 ? (
@@ -481,7 +488,7 @@ const TenantDashboard: React.FC = () => {
                 {currentList.map((r) => {
                   const currentIndex = getStatusIndex(r.status);
 
-                  // Build step times (fallback in_queue to createdAt if null)
+                  // Build times object, always in pipeline order
                   const times: {
                     status: RequestStatus;
                     time: string | null;
@@ -519,15 +526,12 @@ const TenantDashboard: React.FC = () => {
                           </p>
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          {/* Status pill */}
                           <span
                             className="status-pill"
                             style={{ backgroundColor: statusColor[r.status] }}
-                            title={statusLabels[r.status]}
                           >
                             {statusLabels[r.status]}
                           </span>
-                          {/* Priority pill */}
                           <div
                             style={{
                               marginTop: 6,
@@ -538,7 +542,6 @@ const TenantDashboard: React.FC = () => {
                               border: "1px solid rgba(148,163,184,0.7)",
                               color: priorityColor[r.priority],
                             }}
-                            title={`Priority: ${priorityLabels[r.priority]}`}
                           >
                             {priorityLabels[r.priority]}
                           </div>
@@ -553,9 +556,9 @@ const TenantDashboard: React.FC = () => {
                         </p>
                       )}
 
-                      {/* Timeline that shows completion status on hover */}
+                      {/* TIMELINE */}
                       <div className="request-timeline">
-                        {/* Progress bar */}
+                        {/* bar */}
                         <div className="request-timeline-bar-row">
                           {statusPipeline.map((step, idx) => (
                             <div key={step} className="request-timeline-step">
@@ -565,75 +568,84 @@ const TenantDashboard: React.FC = () => {
                             </div>
                           ))}
                         </div>
+
+                        {/* labels */}
                         <div className="request-timeline-label-row">
                           {statusPipeline.map((step) => (
-                            <div
-                              key={step}
-                              className="request-timeline-label"
-                              title={statusLabels[step]}
-                            >
+                            <div key={step} className="request-timeline-label">
                               {statusLabels[step]}
                             </div>
                           ))}
                         </div>
 
-                        {/* Per-step times & durations */}
-                        <div style={{ marginTop: 6 }}>
-                          {times.map((stepInfo, index) => {
-                            const label = statusLabels[stepInfo.status];
-                            const timeStr = stepInfo.time
-                              ? formatTimeOnly(stepInfo.time)
+                        {/* times directly under each status label */}
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 4,
+                          }}
+                        >
+                          {statusPipeline.map((step, index) => {
+                            const timeEntry = times.find(
+                              (t) => t.status === step
+                            );
+                            const timeVal = timeEntry?.time || null;
+                            const timeStr = timeVal
+                              ? formatTimeOnly(timeVal)
                               : null;
 
                             let delta: string | null = null;
-                            if (
-                              index > 0 &&
-                              stepInfo.time &&
-                              times[index - 1].time
-                            ) {
+                            if (index > 0 && timeVal && times[index - 1].time) {
                               delta = formatDuration(
                                 times[index - 1].time as string,
-                                stepInfo.time
+                                timeVal
                               );
                             }
 
                             return (
-                              <p
-                                key={stepInfo.status}
-                                className="request-card-footer"
-                                style={{ fontSize: 11, marginBottom: 2 }}
+                              <div
+                                key={step}
+                                style={{
+                                  flex: 1,
+                                  textAlign: "center",
+                                  fontSize: 11,
+                                  lineHeight: 1.2,
+                                }}
                               >
-                                {label}:{" "}
-                                {timeStr ? (
-                                  <>
-                                    {timeStr}
-                                    {delta && (
-                                      <span style={{ color: "#9ca3af" }}>
-                                        {" "}
-                                        • +{delta}
-                                      </span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span style={{ color: "#9ca3af" }}>
-                                    Pending
-                                  </span>
+                                <div
+                                  style={{
+                                    color: timeStr ? "#e5e7eb" : "#9ca3af",
+                                  }}
+                                >
+                                  {timeStr || "Pending"}
+                                </div>
+                                {delta && (
+                                  <div
+                                    style={{
+                                      marginTop: 2,
+                                      fontSize: 10,
+                                      color: "#9ca3af",
+                                    }}
+                                  >
+                                    +{delta}
+                                  </div>
                                 )}
-                              </p>
+                              </div>
                             );
                           })}
                         </div>
 
                         <p
                           className="request-card-footer"
-                          style={{ marginTop: 4 }}
+                          style={{ marginTop: 6 }}
                         >
                           Last updated: {formatDateTime(r.updatedAt)} • Updated
                           by {formatUpdatedBy(r.lastUpdatedByRole)}
                         </p>
                       </div>
 
-                      {/* Close button only for active (non-completed) requests */}
                       {r.status !== "completed" && (
                         <div
                           style={{

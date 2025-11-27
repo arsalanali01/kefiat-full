@@ -38,12 +38,12 @@ model Request {
   status              RequestStatus        @default(in_queue)
   tenant              User                 @relation(fields: [tenantId], references: [id])
   tenantId            Int
-  lastUpdatedByRole   UpdatedByRole        @default(system)
+  lastUpdatedByRole   String? // or an enum
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
   // Timeline fields for each status step
-  inQueueAt              DateTime? @default(now())
+  inQueueAt              DateTime? 
   viewedAt               DateTime?
   maintenanceRequestedAt DateTime?
   implementingActionsAt  DateTime?

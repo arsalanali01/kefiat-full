@@ -112,6 +112,7 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
         tenantId: user.id,
         status: "in_queue",
         lastUpdatedByRole: "tenant",
+        // first stage timestamp
         inQueueAt: now,
       },
     });
@@ -132,6 +133,7 @@ router.get("/mine", authMiddleware, async (req: AuthRequest, res) => {
     const requests = await prisma.request.findMany({
       where: { tenantId: user.id },
       orderBy: { createdAt: "desc" },
+      // all fields, including timestamps, are returned
     });
     return res.json(requests);
   } catch (err) {
@@ -162,13 +164,39 @@ router.patch("/:id/close", authMiddleware, async (req: AuthRequest, res) => {
 
     const now = new Date();
 
+    const data: any = {
+      status: "completed",
+      lastUpdatedByRole: "tenant",
+    };
+
+    // ensure earlier stages at least have something
+    if (!existing.inQueueAt) {
+      data.inQueueAt = existing.createdAt ?? now;
+    }
+    if (!existing.viewedAt && existing.status !== "in_queue") {
+      data.viewedAt = now;
+    }
+    if (
+      !existing.maintenanceRequestedAt &&
+      statusPipeline.indexOf(existing.status as RequestStatus) >=
+        statusPipeline.indexOf("maintenance_requested")
+    ) {
+      data.maintenanceRequestedAt = existing.maintenanceRequestedAt ?? now;
+    }
+    if (
+      !existing.implementingActionsAt &&
+      statusPipeline.indexOf(existing.status as RequestStatus) >=
+        statusPipeline.indexOf("implementing_actions")
+    ) {
+      data.implementingActionsAt = existing.implementingActionsAt ?? now;
+    }
+
+    // completedAt is definitely set
+    data.completedAt = existing.completedAt ?? now;
+
     const updated = await prisma.request.update({
       where: { id: Number(id) },
-      data: {
-        status: "completed",
-        lastUpdatedByRole: "tenant",
-        completedAt: existing.completedAt ?? now,
-      },
+      data,
     });
 
     return res.json(updated);
@@ -243,22 +271,34 @@ router.patch("/:id/status", authMiddleware, async (req: AuthRequest, res) => {
       lastUpdatedByRole: "manager",
     };
 
-    // Set the timestamp for the new status if it wasn't set before
+    // always ensure inQueueAt at least exists
+    if (!existing.inQueueAt) {
+      data.inQueueAt = existing.createdAt ?? now;
+    }
+
+    // Set the timestamp for the new status (the moment maintenance moves it)
     switch (status) {
       case "in_queue":
+        // normally shouldn't be moving back, but if we do, keep the earliest time
         if (!existing.inQueueAt) data.inQueueAt = now;
         break;
       case "viewed":
         if (!existing.viewedAt) data.viewedAt = now;
         break;
       case "maintenance_requested":
-        if (!existing.maintenanceRequestedAt) data.maintenanceRequestedAt = now;
+        if (!existing.maintenanceRequestedAt) {
+          data.maintenanceRequestedAt = now;
+        }
         break;
       case "implementing_actions":
-        if (!existing.implementingActionsAt) data.implementingActionsAt = now;
+        if (!existing.implementingActionsAt) {
+          data.implementingActionsAt = now;
+        }
         break;
       case "completed":
-        if (!existing.completedAt) data.completedAt = now;
+        if (!existing.completedAt) {
+          data.completedAt = now;
+        }
         break;
     }
 
