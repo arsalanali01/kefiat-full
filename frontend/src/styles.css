@@ -405,6 +405,7 @@ body {
   position: relative;
   background: #020617;
   transition: background 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+  padding: 16px 20px 40px 20px;
 }
 /* Timeline inside tenant request cards */
 
@@ -422,7 +423,7 @@ body {
 /* Show the timeline when the card is hovered */
 .request-card:hover .request-timeline {
   opacity: 1;
-  max-height: 80px;
+  max-height: 180px;
 }
 
 .request-timeline-bar-row {
@@ -469,7 +470,8 @@ body {
 }
 .request-card:hover {
   background: #111827;
-  transform: translateY(-2px);
+  transform: scale(1.02);
+  padding-bottom: 65px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.9);
 }
 
