@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int            @id @default(autoincrement())
+  name           String
+  email          String         @unique
+  passwordHash   String
+  role           Role
+  tenantProfile  TenantProfile?
+  requests       Request[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model TenantProfile {
+  id        Int    @id @default(autoincrement())
+  unitId    Int
+  user      User   @relation(fields: [userId], references: [id])
+  userId    Int    @unique
+}
+
+model Request {
+  id                  Int                  @id @default(autoincrement())
+  unit                String
+  category            String
+  description         String
+  phone               String
+  priority            Priority             @default(normal)
+  preferredTimeWindow PreferredTimeWindow?
+  accessInstructions  String?
+  status              RequestStatus        @default(in_queue)
+  tenant              User                 @relation(fields: [tenantId], references: [id])
+  tenantId            Int
+  lastUpdatedByRole   UpdatedByRole        @default(system)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+enum Role {
+  tenant
+  manager
+  admin
+}
+
+enum RequestStatus {
+  in_queue
+  viewed
+  maintenance_requested
+  implementing_actions
+  completed
+}
+
+enum Priority {
+  low
+  normal
+  high
+  emergency
+}
+
+enum PreferredTimeWindow {
+  morning
+  afternoon
+  evening
+  anytime
+}
+
+enum UpdatedByRole {
+  tenant
+  manager
+  system
+}
