@@ -33,7 +33,8 @@ model Request {
   description         String
   phone               String
   priority            Priority             @default(normal)
-  preferredTimeWindow PreferredTimeWindow?
+  preferredWindow1    String?
+  preferredWindow2    String?
   accessInstructions  String?
   status              RequestStatus        @default(in_queue)
   tenant              User                 @relation(fields: [tenantId], references: [id])

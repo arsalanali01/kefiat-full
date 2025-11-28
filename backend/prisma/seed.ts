@@ -1,10 +1,4 @@
-import {
-  PrismaClient,
-  Role,
-  Priority,
-  PreferredTimeWindow,
-  UpdatedByRole,
-} from "@prisma/client";
+import { PrismaClient, Role, Priority } from "@prisma/client";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 
@@ -57,9 +51,8 @@ async function main() {
       phone: "555-123-4567",
       status: "in_queue",
       priority: Priority.high,
-      preferredTimeWindow: PreferredTimeWindow.morning,
       accessInstructions: "OK to enter if I am not home.",
-      lastUpdatedByRole: UpdatedByRole.tenant,
+      lastUpdatedByRole: "tenant",
       tenantId: tenant.id,
     },
   });
@@ -72,9 +65,8 @@ async function main() {
       phone: "555-123-4567",
       status: "maintenance_requested",
       priority: Priority.normal,
-      preferredTimeWindow: PreferredTimeWindow.afternoon,
       accessInstructions: "Please call before coming.",
-      lastUpdatedByRole: UpdatedByRole.manager,
+      lastUpdatedByRole: "manager",
       tenantId: tenant.id,
     },
   });

@@ -30,7 +30,8 @@ type TenantRequest = {
   createdAt: string;
   updatedAt: string;
   priority: RequestPriority;
-  preferredTimeWindow: PreferredTimeWindow;
+  preferredWindow1?: string | null;
+  preferredWindow2?: string | null;
   accessInstructions?: string | null;
   lastUpdatedByRole: UpdatedByRole;
 
@@ -40,6 +41,17 @@ type TenantRequest = {
   implementingActionsAt: string | null;
   completedAt: string | null;
 };
+
+const windowOptions = [
+  { value: "08:00-10:00", label: "8:00 – 10:00 AM" },
+  { value: "09:00-11:00", label: "9:00 – 11:00 AM" },
+  { value: "10:00-12:00", label: "10:00 AM – 12:00 PM" },
+  { value: "11:00-13:00", label: "11:00 AM – 1:00 PM" },
+  { value: "12:00-14:00", label: "12:00 – 2:00 PM" },
+  { value: "13:00-15:00", label: "1:00 – 3:00 PM" },
+  { value: "14:00-16:00", label: "2:00 – 4:00 PM" },
+  { value: "15:00-17:00", label: "3:00 – 5:00 PM" },
+];
 
 const statusLabels: Record<RequestStatus, string> = {
   in_queue: "In Queue",
@@ -222,7 +234,8 @@ const TenantDashboard: React.FC = () => {
     description: "",
     phone: "",
     priority: "normal" as RequestPriority,
-    preferredTimeWindow: "anytime" as Exclude<PreferredTimeWindow, null>,
+    preferredWindow1: "08:00-10:00",
+    preferredWindow2: "",
     accessInstructions: "",
   });
 
@@ -252,7 +265,8 @@ const TenantDashboard: React.FC = () => {
           description: form.description,
           phone: form.phone,
           priority: form.priority,
-          preferredTimeWindow: form.preferredTimeWindow,
+          preferredWindow1: form.preferredWindow1,
+          preferredWindow2: form.preferredWindow2 || undefined,
           accessInstructions: form.accessInstructions || undefined,
         },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -265,7 +279,8 @@ const TenantDashboard: React.FC = () => {
         description: "",
         phone: "",
         priority: "normal",
-        preferredTimeWindow: "anytime",
+        preferredWindow1: "08:00-10:00",
+        preferredWindow2: "",
         accessInstructions: "",
       });
       setSubmitMessage(
@@ -348,7 +363,12 @@ const TenantDashboard: React.FC = () => {
 
               <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
                 <div style={{ flex: 1 }} className="field-group">
-                  <label className="field-label">Priority </label>
+                  <label className="field-label">
+                    Priority{" "}
+                    <span style={{ color: "#9ca3af", fontSize: 11 }}>
+                      (Emergency = active leak, fire, gas smell, total outage)
+                    </span>
+                  </label>
                   <select
                     name="priority"
                     className="select"
@@ -361,19 +381,71 @@ const TenantDashboard: React.FC = () => {
                     <option value="emergency">Emergency</option>
                   </select>
                 </div>
+
                 <div style={{ flex: 1 }} className="field-group">
-                  <label className="field-label">Preferred Time Window</label>
-                  <select
-                    name="preferredTimeWindow"
-                    className="select"
-                    value={form.preferredTimeWindow}
-                    onChange={handleChange}
+                  <label className="field-label">
+                    Preferred Visit Windows{" "}
+                    <span style={{ color: "#9ca3af", fontSize: 11 }}>
+                      (Choose one required and an optional backup; each is a
+                      2-hour window between 8 AM and 5 PM)
+                    </span>
+                  </label>
+
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
                   >
-                    <option value="anytime">Anytime</option>
-                    <option value="morning">Morning (8–12)</option>
-                    <option value="afternoon">Afternoon (12–4)</option>
-                    <option value="evening">Evening (4–8)</option>
-                  </select>
+                    <div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#9ca3af",
+                          display: "inline-block",
+                          marginBottom: 2,
+                        }}
+                      >
+                        Primary window (required)
+                      </span>
+                      <select
+                        name="preferredWindow1"
+                        className="select"
+                        value={form.preferredWindow1}
+                        onChange={handleChange}
+                        required
+                      >
+                        {windowOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#9ca3af",
+                          display: "inline-block",
+                          marginBottom: 2,
+                        }}
+                      >
+                        Backup window (optional)
+                      </span>
+                      <select
+                        name="preferredWindow2"
+                        className="select"
+                        value={form.preferredWindow2}
+                        onChange={handleChange}
+                      >
+                        <option value="">No backup</option>
+                        {windowOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -556,7 +628,25 @@ const TenantDashboard: React.FC = () => {
                       </div>
 
                       <p className="request-card-text">{r.description}</p>
+
                       <p className="request-card-footer">Contact: {r.phone}</p>
+
+                      {/* Preferred visit windows */}
+                      {(r.preferredWindow1 || r.preferredWindow2) && (
+                        <p className="request-card-footer">
+                          Preferred windows:{" "}
+                          {r.preferredWindow1 && (
+                            <span>{r.preferredWindow1}</span>
+                          )}
+                          {r.preferredWindow1 && r.preferredWindow2 && (
+                            <span>; </span>
+                          )}
+                          {r.preferredWindow2 && (
+                            <span>{r.preferredWindow2}</span>
+                          )}
+                        </p>
+                      )}
+
                       {r.accessInstructions && (
                         <p className="request-card-footer">
                           Access: {r.accessInstructions}

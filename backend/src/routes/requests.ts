@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { PrismaClient, Priority, PreferredTimeWindow } from "@prisma/client";
+import { PrismaClient, Priority } from "@prisma/client";
 import { authMiddleware, AuthRequest } from "../middleware/auth";
 
 const prisma = new PrismaClient();
@@ -31,14 +31,18 @@ const allowedPriorities: PriorityValue[] = [
   "emergency",
 ];
 
-type TimeWindowValue = "morning" | "afternoon" | "evening" | "anytime";
-
-const allowedTimeWindows: TimeWindowValue[] = [
-  "morning",
-  "afternoon",
-  "evening",
-  "anytime",
-];
+// New: allowed 2-hour windows between 8:00 and 17:00 (5pm)
+const allowedWindowOptions = [
+  "08:00-10:00",
+  "09:00-11:00",
+  "10:00-12:00",
+  "11:00-13:00",
+  "12:00-14:00",
+  "13:00-15:00",
+  "14:00-16:00",
+  "15:00-17:00",
+] as const;
+type WindowString = (typeof allowedWindowOptions)[number];
 
 function ensureTenant(req: AuthRequest, res: any) {
   const user = req.user as any;
@@ -69,16 +73,22 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
     description,
     phone,
     priority,
+    // old field (ignored now, but safe if sent)
     preferredTimeWindow,
     accessInstructions,
+    // NEW fields
+    preferredWindow1,
+    preferredWindow2,
   } = req.body as {
     unit?: string;
     category?: string;
     description?: string;
     phone?: string;
     priority?: PriorityValue;
-    preferredTimeWindow?: TimeWindowValue;
+    preferredTimeWindow?: string;
     accessInstructions?: string;
+    preferredWindow1?: string;
+    preferredWindow2?: string;
   };
 
   if (!unit || !category || !description || !phone) {
@@ -90,10 +100,29 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
   const prioritySafe: PriorityValue =
     priority && allowedPriorities.includes(priority) ? priority : "normal";
 
-  const timeWindowSafe: TimeWindowValue | null =
-    preferredTimeWindow && allowedTimeWindows.includes(preferredTimeWindow)
-      ? preferredTimeWindow
-      : null;
+  // Validate new windows
+  const w1 = preferredWindow1 as WindowString | undefined;
+  const w2 = preferredWindow2 as WindowString | undefined;
+
+  if (!w1 || !allowedWindowOptions.includes(w1)) {
+    return res.status(400).json({
+      message:
+        "preferredWindow1 is required and must be a valid 2-hour window between 8 AM and 5 PM.",
+    });
+  }
+
+  if (w2 && !allowedWindowOptions.includes(w2)) {
+    return res.status(400).json({
+      message:
+        "preferredWindow2 must be a valid 2-hour window between 8 AM and 5 PM.",
+    });
+  }
+
+  if (w1 && w2 && w1 === w2) {
+    return res.status(400).json({
+      message: "Preferred windows must be different if two are provided.",
+    });
+  }
 
   try {
     const now = new Date();
@@ -105,14 +134,12 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
         description,
         phone,
         priority: prioritySafe as Priority,
-        preferredTimeWindow: timeWindowSafe
-          ? (timeWindowSafe as PreferredTimeWindow)
-          : undefined,
+        preferredWindow1: w1,
+        preferredWindow2: w2 || null,
         accessInstructions: accessInstructions || undefined,
         tenantId: user.id,
         status: "in_queue",
         lastUpdatedByRole: "tenant",
-        // first stage timestamp
         inQueueAt: now,
       },
     });
@@ -133,7 +160,6 @@ router.get("/mine", authMiddleware, async (req: AuthRequest, res) => {
     const requests = await prisma.request.findMany({
       where: { tenantId: user.id },
       orderBy: { createdAt: "desc" },
-      // all fields, including timestamps, are returned
     });
     return res.json(requests);
   } catch (err) {
@@ -169,7 +195,6 @@ router.patch("/:id/close", authMiddleware, async (req: AuthRequest, res) => {
       lastUpdatedByRole: "tenant",
     };
 
-    // ensure earlier stages at least have something
     if (!existing.inQueueAt) {
       data.inQueueAt = existing.createdAt ?? now;
     }
@@ -191,7 +216,6 @@ router.patch("/:id/close", authMiddleware, async (req: AuthRequest, res) => {
       data.implementingActionsAt = existing.implementingActionsAt ?? now;
     }
 
-    // completedAt is definitely set
     data.completedAt = existing.completedAt ?? now;
 
     const updated = await prisma.request.update({
@@ -254,9 +278,7 @@ router.patch("/:id/status", authMiddleware, async (req: AuthRequest, res) => {
     );
     const nextIndex = statusPipeline.indexOf(status);
 
-    // Allow no-op (setting same status)
     if (status !== existing.status) {
-      // must move exactly one step forward
       if (nextIndex !== currentIndex + 1) {
         return res.status(400).json({
           message:
@@ -271,15 +293,12 @@ router.patch("/:id/status", authMiddleware, async (req: AuthRequest, res) => {
       lastUpdatedByRole: "manager",
     };
 
-    // always ensure inQueueAt at least exists
     if (!existing.inQueueAt) {
       data.inQueueAt = existing.createdAt ?? now;
     }
 
-    // Set the timestamp for the new status (the moment maintenance moves it)
     switch (status) {
       case "in_queue":
-        // normally shouldn't be moving back, but if we do, keep the earliest time
         if (!existing.inQueueAt) data.inQueueAt = now;
         break;
       case "viewed":
