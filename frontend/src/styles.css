@@ -490,3 +490,41 @@ body {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-card {
+  width: 320px;
+  background: #0f172a;
+  border-radius: 14px;
+  padding: 22px;
+  border: 1px solid #1e293b;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+.modal-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.modal-text {
+  font-size: 13px;
+  margin: 0 0 18px;
+  color: #9ca3af;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

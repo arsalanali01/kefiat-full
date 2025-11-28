@@ -102,15 +102,40 @@ const TenantDashboard: React.FC = () => {
     "active"
   );
 
-  const [form, setForm] = useState({
-    unit: "",
-    category: "HVAC",
-    description: "",
-    phone: "",
-    priority: "normal" as RequestPriority,
-    preferredTimeWindow: "anytime" as Exclude<PreferredTimeWindow, null>,
-    accessInstructions: "",
-  });
+  // Modal for "Mark as resolved"
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalRequestId, setModalRequestId] = useState<number | null>(null);
+
+  const openResolveModal = (id: number) => {
+    setModalRequestId(id);
+    setModalOpen(true);
+  };
+
+  const closeResolveModal = () => {
+    setModalOpen(false);
+    setModalRequestId(null);
+  };
+
+  const confirmResolve = async () => {
+    if (!token || !modalRequestId) return;
+
+    try {
+      const res = await api.patch<TenantRequest>(
+        `/requests/${modalRequestId}/close`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setRequests((prev) =>
+        prev.map((r) => (r.id === modalRequestId ? { ...r, ...res.data } : r))
+      );
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.response?.data?.message || "Failed to close request.");
+    } finally {
+      closeResolveModal();
+    }
+  };
 
   const getStatusIndex = (status: RequestStatus) =>
     statusPipeline.indexOf(status);
@@ -153,7 +178,7 @@ const TenantDashboard: React.FC = () => {
   const currentList =
     requestView === "active" ? activeRequests : completedRequests;
 
-  // Load + auto-refresh so tenant sees time updates when maintenance changes status
+  // Load + auto-refresh tenant requests
   useEffect(() => {
     if (!token) {
       setLoading(false);
@@ -190,6 +215,16 @@ const TenantDashboard: React.FC = () => {
       clearInterval(intervalId);
     };
   }, [token]);
+
+  const [form, setForm] = useState({
+    unit: "",
+    category: "HVAC",
+    description: "",
+    phone: "",
+    priority: "normal" as RequestPriority,
+    preferredTimeWindow: "anytime" as Exclude<PreferredTimeWindow, null>,
+    accessInstructions: "",
+  });
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -242,28 +277,6 @@ const TenantDashboard: React.FC = () => {
       setError(err?.response?.data?.message || "Failed to submit request.");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleCloseRequest = async (id: number) => {
-    if (!token) return;
-    const confirmed = window.confirm(
-      "Mark this request as resolved? This will close it for maintenance."
-    );
-    if (!confirmed) return;
-
-    try {
-      const res = await api.patch<TenantRequest>(
-        `/requests/${id}/close`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setRequests((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...res.data } : r))
-      );
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.response?.data?.message || "Failed to close request.");
     }
   };
 
@@ -335,12 +348,7 @@ const TenantDashboard: React.FC = () => {
 
               <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
                 <div style={{ flex: 1 }} className="field-group">
-                  <label className="field-label">
-                    Priority{" "}
-                    <span style={{ color: "#9ca3af", fontSize: 11 }}>
-                      (Emergency = active leak, fire, gas smell, total outage)
-                    </span>
-                  </label>
+                  <label className="field-label">Priority </label>
                   <select
                     name="priority"
                     className="select"
@@ -435,7 +443,7 @@ const TenantDashboard: React.FC = () => {
             </form>
           </section>
 
-          {/* RIGHT: timeline / cards */}
+          {/* RIGHT: request cards */}
           <section>
             <h2 style={{ marginBottom: 8, fontSize: 18 }}>
               Track Your Requests
@@ -488,7 +496,6 @@ const TenantDashboard: React.FC = () => {
                 {currentList.map((r) => {
                   const currentIndex = getStatusIndex(r.status);
 
-                  // Build times object, always in pipeline order
                   const times: {
                     status: RequestStatus;
                     time: string | null;
@@ -578,7 +585,7 @@ const TenantDashboard: React.FC = () => {
                           ))}
                         </div>
 
-                        {/* times directly under each status label */}
+                        {/* times under each label */}
                         <div
                           style={{
                             marginTop: 4,
@@ -658,7 +665,7 @@ const TenantDashboard: React.FC = () => {
                             type="button"
                             className="btn btn-secondary"
                             style={{ fontSize: 12, padding: "4px 10px" }}
-                            onClick={() => handleCloseRequest(r.id)}
+                            onClick={() => openResolveModal(r.id)}
                           >
                             Mark as resolved
                           </button>
@@ -672,6 +679,28 @@ const TenantDashboard: React.FC = () => {
           </section>
         </div>
       </main>
+
+      {/* Resolve confirmation modal */}
+      {modalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <h3 className="modal-title">Resolve Request?</h3>
+            <p className="modal-text">
+              Mark this request as resolved? This will complete it for
+              maintenance.
+            </p>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={closeResolveModal}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={confirmResolve}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
